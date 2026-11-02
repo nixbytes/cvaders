@@ -1,208 +1,142 @@
-from random import randrange
+"""PyVaders pygame frontend.
+
+A thin rendering/input layer around the pure logic in :mod:`src.game`.
+All gameplay state and rules live in ``game.py`` (unit-tested without
+pygame); this module only owns the SDL window, image loading, sound and
+event handling.
+
+Behavioural fixes vs the original script:
+  * Sound objects are loaded once at startup, not every frame (the original
+    constructed ``mixer.Sound(...)`` on every SPACE press / explosion).
+  * The asset case bug is fixed: the on-disk file is ``explosion.wav``
+    (lowercase); the original code loaded ``Explosion.wav``.
+  * Game-over now stops the loop via ``game.game_over`` (the original drew
+    the banner but kept running).
+"""
+
+import os
+import random
+
 import pygame
 from pygame import mixer
-import random
-import math
 
-# intial instances of pygame
-pygame.init()
+from src import game
 
-screen = pygame.display.set_mode((800, 600))
-
-# Add background image
-
-background = pygame.image.load("assests/mountains03-1920-x-1080_full.png")
-
-# Background Music
-
-mixer.music.load("assests/Dark Fantasy Studio - Particle voyager.mp3")
-mixer.music.play(-1)
-
-# Title logo with caption
-
-pygame.display.set_caption("assests/PyVaders")
-icon = pygame.image.load("assests/alien.png")
-pygame.display.set_icon(icon)
-
-# Player
-
-player_image = pygame.image.load("assests/darkgrey_02.png")
-player_x = 370
-player_y = 480
-player_x_change = 0
-
-# Alien Enemy
-alien_image = []
-alien_x = []
-alien_y = []
-alien_x_change = []
-alien_y_change = []
-num_of_enemies = 6
-
-for _ in range(num_of_enemies):
-    alien_image.append(pygame.image.load("assests/alien_enemy.png"))
-    alien_x.append(random.randrange(0, 800))
-    alien_y.append(random.randrange(50, 150))
-    alien_x_change.append(0.3)
-    alien_y_change.append(30)
-
-# Alien Enemy
-laser_image = pygame.image.load("assests/laser.png")
-laser_x = 0
-laser_y = 500
-laser_x_change = 0
-laser_y_change = 5
-laser_state = "ready"
-
-# Score values
-score = 0
-
-# font for score
-font = pygame.font.Font("assests/Monoton-Regular.ttf", 32)
-score_displayX = 6
-score_displayY = 6
-
-# font for Game Over
-over_font = pygame.font.Font("assests/Monoton-Regular.ttf", 32)
-
-"""
-Draw Function from pygames
-Using the screen blit
-
-def player, alien, collision and laser
-"""
+# The original repo ships this directory misspelled as ``assests``. We keep
+# the historical name so existing assets resolve, but centralise the path
+# here so it is easy to correct later.
+ASSET_DIR = "assests"
 
 
-def show_score(x, y):
-    score_display = font.render("Score : " + str(score), True, (255, 0, 0))
-    screen.blit(score_display, (x, y))
-
-def game_over():
-    over_text = over_font.render("GAME OVER", True, (255, 0, 0))
-    screen.blit(over_text, (250, 250))
-
-def player(x, y):
-    screen.blit(player_image, (x, y))
+def asset_path(name):
+    return os.path.join(ASSET_DIR, name)
 
 
-def alien(x, y, i):
-    screen.blit(alien_image[i], (x, y))
+class Game:
+    """Owns the pygame surface, textures, sounds and the game loop."""
+
+    def __init__(self, seed=0):
+        pygame.init()
+        self.screen = pygame.display.set_mode((game.SCREEN_W, game.SCREEN_H))
+
+        self.background = self._load_image("mountains03-1920-x-1080_full.png")
+        self.player_image = self._load_image("darkgrey_02.png")
+        self.alien_image = self._load_image("alien_enemy.png")
+        self.laser_image = self._load_image("laser.png")
+        self.icon = self._load_image("alien.png")
+
+        self.laser_sound = self._load_sound("laser.wav")
+        self.explosion_sound = self._load_sound("explosion.wav")
+
+        self.font = game_font()
+        self.over_font = game_font()
+
+        self.state = game.init_game(seed=seed)
+        self.running = True
+
+        pygame.display.set_caption("PyVaders")
+        pygame.display.set_icon(self.icon)
+
+        # Background music (loaded once, on failure we continue silently).
+        if mixer.init():
+            mixer.music.load(asset_path("Dark Fantasy Studio - Particle voyager.mp3"))
+            mixer.music.play(-1)
+
+    # --- resource helpers (one-time load, no per-frame allocation) ---
+    def _load_image(self, name):
+        img = pygame.image.load(asset_path(name)).convert()
+        return img
+
+    def _load_sound(self, name):
+        return mixer.Sound(asset_path(name))
+
+    # --- input ---
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    game.set_player_direction(self.state, -0.5)
+                elif event.key == pygame.K_RIGHT:
+                    game.set_player_direction(self.state, 0.5)
+                elif event.key == pygame.K_SPACE:
+                    if self.laser_sound:
+                        self.laser_sound.play()
+                    game.fire_laser(self.state)
+            elif event.type == pygame.KEYUP and event.key in (
+                pygame.K_LEFT,
+                pygame.K_RIGHT,
+            ):
+                game.set_player_direction(self.state, 0.0)
+
+    # --- update ---
+    def update(self):
+        game.update_player(self.state)
+        game.update_aliens(self.state)
+        game.update_laser(self.state)
+        self._play_explosion_on_hit()
+
+    def _play_explosion_on_hit(self):
+        # A hit is detected by score change; keep sound decoupled from logic.
+        if getattr(self, "_last_score", -1) != self.state.score:
+            if self.explosion_sound:
+                self.explosion_sound.play()
+            self._last_score = self.state.score
+
+    # --- render ---
+    def render(self):
+        self.screen.blit(self.background, (0, 0))
+        self.screen.blit(self.player_image,
+                         (self.state.player_x, self.state.player_y))
+        for alien in self.state.aliens:
+            self.screen.blit(self.alien_image, (alien.x, alien.y))
+        self.screen.blit(self.laser_image,
+                         (self.state.laser.x + 9, self.state.laser.y + 6))
+        s_disp = self.font.render("Score : " + str(self.state.score),
+                                  True, (255, 0, 0))
+        self.screen.blit(s_disp, (game.SCREEN_W - s_disp.get_width() - 6, 6))
+        if self.state.game_over:
+            over = self.over_font.render("GAME OVER", True, (255, 0, 0))
+            self.screen.blit(over, (250, 250))
+        pygame.display.update()
+
+    def run(self):
+        while self.running:
+            self.handle_events()
+            self.update()
+            self.render()
+            if self.state.game_over:
+                break
 
 
-def shoot_laser(x, y):
-    global laser_state
-    laser_state = "fire"
-    screen.blit(laser_image, (x + 9, y + 6))
+def game_font():
+    return pygame.font.Font(asset_path("Monoton-Regular.ttf"), 32)
 
 
-def isCollision(alien_x, alien_y, laser_x, laser_y):
-    distance = math.sqrt(
-        math.pow(alien_x - laser_x, 2) + math.pow(alien_y - laser_y, 2)
-    )
-    return distance < 27
+def main():
+    Game().run()
 
 
-# Game Loop
-
-running = True
-
-while running:
-
-    screen.fill((5, 0, 0))
-
-    screen.blit(background, (0, 0))
-
-    # Listening to each events for key press directions
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                player_x_change = -0.5
-                # print("Left Key is press")
-            if event.key == pygame.K_RIGHT:
-                player_x_change = 0.5
-                # print("Right Key is press")
-            if event.key == pygame.K_SPACE:
-                laser_sound = mixer.Sound("assests/laser.wav")
-                laser_sound.play()
-                laser_x = player_x
-                shoot_laser(laser_x, laser_y)
-
-        if event.type == pygame.KEYUP and event.key in [
-            pygame.K_LEFT,
-            pygame.K_RIGHT,
-        ]:
-            player_x_change = 0
-
-    # Draw with the following colors
-    # screen.fill((5, 0, 0))
-
-    player_x += player_x_change
-
-    if player_x <= 0:
-        player_x = 0
-
-    elif player_x >= 736:
-        player_x = 736
-
-    # Alien movements and x changes position
-    """
-    interate from a number aliens and generat them
-    also check and call isCollision
-    """
-    for i in range(num_of_enemies):
-
-        # Game Over
-        if alien_y[i] > 200:
-            for j in range(num_of_enemies):
-                alien_y[j] = 2000
-            game_over()
-            break
-
-        alien_x[i] += alien_x_change[i]
-
-        if alien_x[i] <= 0:
-            alien_x_change[i] = 1
-            alien_y[i] += alien_y_change[i]
-
-        elif alien_x[i] >= 736:
-            alien_x_change[i] = -1
-            alien_y[i] += alien_y_change[i]
-
-        collision = isCollision(alien_x[i], alien_y[i], laser_x, laser_y)
-
-        if collision:
-            explosion = mixer.Sound("assests/Explosion.wav")
-            explosion.play()
-            laser_y = 400
-            laser_state = "ready"
-            score += 1
-            alien_x[i] = random.randint(0, 800)
-            alien_y[i] = random.randint(50, 150)
-
-        alien(alien_x[i], alien_y[i], i)
-
-    # laser movement
-    if laser_y <= 0:
-        laser_y = 500
-        laser_state = "ready"
-
-    if laser_state is "fire":
-        shoot_laser(laser_x, laser_y)
-        laser_y -= laser_y_change
-
-    # Call instances
-
-    player(player_x, player_y)
-
-    show_score(score_displayX, score_displayY)
-
-    """
-    Final draw call for the game.
-    call update by end of loop
-    need to keep in the bottom of loop
-    """
-    pygame.display.update()
+if __name__ == "__main__":
+    main()
