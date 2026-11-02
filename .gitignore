@@ -146,3 +146,23 @@ cython_debug/
 
 # Additional file
 .DS_Store
+
+# --- C build artifacts (PyVaders C port) ---
+# Compiled object files and the static library
+*.o
+*.a
+
+# The build directory created by the Makefile (test binaries, the game)
+c/build/
+
+# Coverage / instrumentation files
+*.gcov
+*.gcno
+*.gcda
+
+# The AddressSanitizer/valgrind outputs if redirected to files
+*.log
+
+# Misc editor/IDE scratch that the C work introduced
+*.swp
+*.un~
