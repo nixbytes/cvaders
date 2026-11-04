@@ -1,6 +1,6 @@
 /*
  * ===========================================================================
- * test_game.c  --  The unit tests for the PyVaders C core
+ * test_game.c  --  The unit tests for the cvanders C core
  * ===========================================================================
  *
  * HOW TO READ THIS FILE (for new C programmers)
@@ -17,7 +17,7 @@
  * 3. `main()` at the bottom just calls every test function one after
  *    another, then hands the result back to the OS via UNITY_END().
  *
- * 4. The tests deliberately cover the tricky bits of the original Python:
+ * 4. The tests deliberately cover the tricky bits of the original game:
  *    - collision math (T1/T2)
  *    - player clamping (T3)
  *    - alien wall bounce (T4)
@@ -26,11 +26,12 @@
  *    - laser recycling (T7)
  *    - RNG ranges: exclusive spawn vs inclusive respawn (T8)
  *    - initial state (T9)
- *    - fire semantics, the `is "fire"` Python interning bug (T10)
+ *    - fire semantics (T10): firing arms the laser, which is the correct
+ *      value-based behaviour -- no string-identity subtleties.
  *    - NULL-pointer safety (T11)
  */
 #include "unity.h"
-#include "pyvaders.h"
+#include "cvaders.h"
 #include <math.h>
 
 /*

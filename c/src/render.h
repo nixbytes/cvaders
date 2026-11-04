@@ -17,7 +17,7 @@
 #ifndef RENDER_H
 #define RENDER_H
 
-#include "pyvaders.h"
+#include "cvaders.h"
 
 /* Opaque handle: the rest of the program never sees SDL types. This is a
  * "data hiding" trick that keeps the heavy SDL dependency out of our other

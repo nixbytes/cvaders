@@ -1,12 +1,12 @@
 /*
  * ===========================================================================
- * game.c  --  Implementation of the PyVaders game logic
+ * game.c  --  Implementation of the cvanders game logic
  * ===========================================================================
  *
  * NEW-COMER ROADMAP THROUGH THIS FILE
  *   1. Top of file: #include lines and the private "static" helpers
  *      (the random-number machinery).
- *   2. The public functions declared in pyvaders.h, defined in the SAME
+ *   2. The public functions declared in cvaders.h, defined in the SAME
  *      ORDER they appear in the header, one block at a time.
  *   3. Each function does ONE thing and reads like its header comment.
  *
@@ -26,16 +26,15 @@
  *     you hide implementation details and avoid name clashes.
  */
 
-#include "pyvaders.h"   /* our own public interface            */
+#include "cvaders.h"   /* our own public interface            */
 #include <stdlib.h>     /* calloc, free                        */
 
 /* --- Seedable random-number generator ----------------------------------
  *
- * The original Python used `random.Random(seed)`. Python's generator is NOT
- * bit-for-bit reproducible across languages, so we do not try to match
- * Python's numbers. Instead we use our own deterministic PRNG: for a given
- * seed it produces the EXACT same sequence every run, which is what matters
- * for testing.
+ * We use our own deterministic PRNG (xorshift32): for a given seed it
+ * produces the EXACT same sequence every run, which is what matters for
+ * testing. A standard library generator would not guarantee reproducibility
+ * across runs/platforms.
  *
  * `static` in front of the function type means "private to this file".
  * */
@@ -67,15 +66,15 @@ static double sample01(uint32_t *state)
 }
 
 /* A float in the half-open range [min, max). Used for the initial enemy
- * spawn (mirrors Python's `randrange`, whose upper bound is EXCLUSIVE). */
+ * spawn, whose upper bound is EXCLUSIVE. */
 static double ffract(uint32_t *state, double min, double max)
 {
     return min + sample01(state) * (max - min);
 }
 
-/* An integer in the CLOSED range [lo, hi]. Used for respawns (mirrors
- * Python's `randint`, which is INCLUSIVE on both ends). We use exact 64-bit
- * arithmetic so the full range -- including `hi` -- is reachable. */
+/* An integer in the CLOSED range [lo, hi]. Used for respawns, which are
+ * INCLUSIVE on both ends. We use exact 64-bit arithmetic so the full range
+ * -- including `hi` -- is reachable. */
 static double fint_incl(uint32_t *state, double lo, double hi)
 {
     /*
@@ -98,7 +97,7 @@ static double fint_incl(uint32_t *state, double lo, double hi)
 }
 
 /* ----------------------------------------------------------------------- *
- *  PUBLIC FUNCTIONS (defined to match the prototypes in pyvaders.h)
+ *  PUBLIC FUNCTIONS (defined to match the prototypes in cvaders.h)
  * ----------------------------------------------------------------------- */
 
 /*
@@ -116,6 +115,10 @@ int game_init(uint32_t seed, GameState **out_state)
 
     /*
      * calloc allocates ONE GameState and zeroes every byte of it.
+     * This is safer than malloc() because it ensures all fields (like
+     * pointers or booleans) start at 0/false instead of containing
+     * "garbage" values from previous memory use.
+     *
      * `sizeof(GameState)` asks the compiler "how many bytes is this
      * struct?", so the size is always correct even if the struct changes.
      *
@@ -195,10 +198,13 @@ void respawn_coords(GameState *state, double *out_x, double *out_y)
 /*
  * is_collision: is the alien close enough to the laser to count as a hit?
  *
- * The original Python did `sqrt(dx*dx + dy*dy) < 27`. Squaring both sides
- * is algebraically identical: `dx*dx + dy*dy < 27*27`. We avoid `sqrt()`
- * for two reasons: it is faster, AND it sidesteps a rounding edge case at
- * exactly the boundary (27.0).
+ * The mathematically equivalent form is `sqrt(dx*dx + dy*dy) < 27`.
+ * Squaring both sides gives `dx*dx + dy*dy < 27*27`, which is identical
+ * but avoids the `sqrt()`. We use it for two reasons: it is faster, and it
+ * sidesteps a rounding edge case at exactly the boundary (27.0).
+ *
+ * For a beginner: every `if` in this file follows the `NULL`-check-or-return
+ * pattern -- the single most important habit in C memory safety.
  */
 bool is_collision(double alien_x, double alien_y,
                   double laser_x, double laser_y)
@@ -220,9 +226,9 @@ void set_player_direction(GameState *state, double x_change)
 /*
  * update_player: one frame of player motion.
  *
- * We advance by the velocity, then CLAMP to the screen edges. The original
- * Python used `if x <= 0: ...; elif x >= 736: ...`. We keep the same clamp
- * bounds -- note `PLAYER_MAX_X == SCREEN_W - PLAYER_WIDTH`.
+ * We advance by the velocity, then CLAMP to the screen edges. The clamp
+ * bounds are `PLAYER_MAX_X == SCREEN_W - PLAYER_WIDTH`, matching the
+ * original design's `if x <= 0: ... elif x >= 736: ...` rule.
  */
 void update_player(GameState *state)
 {
@@ -245,7 +251,7 @@ void fire_laser(GameState *state)
 
 /*
  * update_aliens: one frame of enemy motion. The heaviest function, so it
- * is broken up with comments into the sub-steps from the Python original.
+ * is broken up with comments into the sub-steps of the original design.
  */
 void update_aliens(GameState *state)
 {
@@ -298,7 +304,7 @@ void update_aliens(GameState *state)
 /*
  * update_laser: one frame of laser motion.
  *
- * Two rules, in the order the Python original used:
+ * Two rules, in the order of the original design:
  *   1. If a laser has reached the top of the screen, recycle it to the
  *      start position.
  *   2. If a laser is currently in flight, move it up by y_change.
