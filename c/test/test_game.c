@@ -31,7 +31,7 @@
  *    - NULL-pointer safety (T11)
  */
 #include "unity.h"
-#include "cvaders.h"
+#include "pyvaders.h"
 #include <math.h>
 
 /*

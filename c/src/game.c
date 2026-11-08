@@ -26,7 +26,7 @@
  *     you hide implementation details and avoid name clashes.
  */
 
-#include "cvaders.h"   /* our own public interface            */
+#include "pyvaders.h"   /* our own public interface            */
 #include <stdlib.h>     /* calloc, free                        */
 
 /* --- Seedable random-number generator ----------------------------------

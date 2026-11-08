@@ -37,7 +37,7 @@
  */
 
 #include "render.h"
-#include "cvaders.h"
+#include "pyvaders.h"
 
 #include <stdio.h>
 #include <stdlib.h>

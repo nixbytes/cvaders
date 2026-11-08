@@ -1,9 +1,9 @@
-#ifndef CVANDERS_H
-#define CVANDERS_H
+#ifndef PYVADERS_H
+#define PYVADERS_H
 
 /*
  * ===========================================================================
- * cvaders.h  --  the public face of the game's brain
+ * pyvaders.h  --  the public face of the game's brain
  * ===========================================================================
  *
  * 1) WHY A HEADER FILE?
