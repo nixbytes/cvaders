@@ -27,6 +27,9 @@
 
 /*
  * main() is the C entry point -- the OS calls it when the program starts.
+ *
+ * The `void` inside the parentheses means this function takes no arguments.
+ *
  * Its return value is the program's exit code: 0 = success, non-zero =
  * failure. CI and shells use this to decide whether the program worked.
  */

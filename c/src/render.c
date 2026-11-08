@@ -11,31 +11,29 @@
  *   - No dynamic allocation happens inside the game loop.
  *
  * MEMORY-SAFETY CHECKLIST (what makes this file safe)
- *   1. Every `SDL_Load...` / `TT_LoadFont` / `Mix_LoadWAV` /
- *      `Mix_LoadMUS` return is checked for NULL. The Python original had
- *      NO such checks; a missing asset file is a crash in C.
+ *   1. Every `IMG_Load` / `TTF_OpenFont` / `Mix_LoadWAV` /
+ *      `Mix_LoadMUS` return is checked for NULL. A missing asset file
+ *      would otherwise dereference a NULL and crash; we never do that.
  *   2. No allocation inside the per-frame loop, so there is nothing to
  *      forget to free.
  *   3. Every loaded resource is paired with its Free/Destroy in
- *      renderer_destroy().
+ *      renderer_destroy() -- one create, one free, in reverse order.
  *   4. `game_init` / `game_free` bracket the loop: one allocation, one
  *      de-allocation.
- *   5. SDL_Quit() is called to release the underlying system resources.
+ *   5. SDL_Quit()/IMG_Quit() are called to release system resources.
  *
- * BUG FIXES VS THE ORIGINAL PYTHON
- *   1. Sound objects are loaded ONCE at startup, not on every SPACE press
- *      / explosion. In Python that is a per-frame allocation; in C it
- *      would be a heap leak every frame.
- *   2. The on-disk file is `explosion.wav` (lowercase). The original Python
- *      code tried to load `Explosion.wav`, which fails on case-sensitive
- *      filesystems. We use the correct case.
+ * NOTES ON THE ORIGINAL DESIGN (the C port fixes these)
+ *   1. Sound effects are loaded ONCE at startup, not on every SPACE press
+ *      / explosion, which would be a heap leak every frame.
+ *   2. Image assets are PNG/JPG, so we load them with SDL2_image's
+ *      `IMG_Load` (not `SDL_LoadBMP`, which only reads BMP files).
  *   3. A `game_over` makes the frame loop return 0, so the loop actually
- *      exits. The Python original never stopped the loop after a game over.
+ *      exits.
  *
- * Note: this file needs SDL2, SDL_ttf and SDL_mixer to compile. Those
- * libraries are not installed in the test sandbox, so the C TESTS do not
- * build this file -- only `make all` (with SDL present) does. The logic
- * that matters is in game.c, which IS tested.
+ * NOTE: this file needs SDL2, SDL_ttf, SDL_mixer and SDL2_image to
+ * compile. Those libraries are not installed in the test sandbox, so the
+ * C TESTS do not build this file -- only `make all` (with SDL present)
+ * does. The logic that matters is in game.c, which IS tested.
  */
 
 #include "render.h"
@@ -47,6 +45,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_mixer.h>
+#include <SDL2/SDL_image.h>
 
 /* ---------------------------------------------------------------------- */
 /* Renderer opaque struct definition                                      */
@@ -81,12 +80,15 @@ struct Renderer {
 /* ---------------------------------------------------------------------- */
 
 /*
- * Load a PNG image and turn it into a texture.
+ * Load an image (PNG or JPG) and turn it into a texture.
  *
  * Returns the texture on success, NULL on any failure. On failure we print
- * the SDL error and return -- we do NOT dereference a NULL. This is the
- * critical safety fix vs the Python original, which assumed the file
- * always exists.
+ * the SDL error and return -- we do NOT dereference a NULL. Checking every
+ * load is the critical memory-safety habit: a missing asset file would
+ * otherwise crash at runtime.
+ *
+ * We use `IMG_Load` because the assets are PNG/JPG (SDL_LoadBMP only reads
+ * .bmp files and would fail on these).
  *
  * The path is built with snprintf so a long name cannot overflow the
  * buffer (a classic C security bug we are explicitly guarding against).
@@ -97,15 +99,15 @@ static SDL_Texture *load_texture(
         SDL_Texture  **out)
 {
     char path[512];
-    int n = snprintf(path, sizeof(path), "assests/%s", image_name);
+    int n = snprintf(path, sizeof(path), "assets/%s", image_name);
     if (n < 0 || n >= (int)sizeof(path)) {
         fprintf(stderr, "asset path too long: %.80s...\n", image_name);
         return NULL;
     }
 
-    SDL_Surface *surf = SDL_LoadBMP(path);
+    SDL_Surface *surf = IMG_Load(path);
     if (surf == NULL) {
-        fprintf(stderr, "image %s: %s\n", image_name, SDL_GetError());
+        fprintf(stderr, "image %s: %s\n", image_name, IMG_GetError());
         return NULL;
     }
 
@@ -141,16 +143,16 @@ static int open_audio(
         return -1;
     }
 
-    *laser_out = Mix_LoadWAV("assests/laser.wav");
+    *laser_out = Mix_LoadWAV("assets/laser.wav");
     if (*laser_out == NULL) {
         fprintf(stderr, "laser.wav: %s\n", Mix_GetError());
     }
 
     /*
-     * Note the lowercase filename: the original Python code used
-     * "Explosion.wav" which fails on case-sensitive filesystems.
+     * Note the lowercase filename: the on-disk file is `explosion.wav`,
+     * and case-sensitive filesystems require the exact case.
      */
-    *explosion_out = Mix_LoadWAV("assests/explosion.wav");
+    *explosion_out = Mix_LoadWAV("assets/explosion.wav");
     if (*explosion_out == NULL) {
         fprintf(stderr, "explosion.wav: %s\n", Mix_GetError());
     }
@@ -159,7 +161,7 @@ static int open_audio(
      * The music file name contains spaces and a hyphen. SDL handles spaces
      * in a C string fine; the hyphen is just a normal character.
      */
-    *music_out = Mix_LoadMUS("assests/Dark Fantasy Studio - Particle voyager.mp3");
+    *music_out = Mix_LoadMUS("assets/Dark Fantasy Studio - Particle voyager.mp3");
     if (*music_out != NULL) {
         Mix_PlayMusic(*music_out, -1);   /* -1 = loop forever */
     } else {
@@ -192,15 +194,25 @@ Renderer *renderer_create(void)
     }
     TTF_Init();
 
+    /* SDL2_image is needed to load the PNG/JPG assets. */
+    if (IMG_Init(IMG_PNG | IMG_JPG) == 0) {
+        fprintf(stderr, "IMG_Init: %s\n", IMG_GetError());
+        TTF_Quit();
+        SDL_Quit();
+        return NULL;
+    }
+
     r = (Renderer *)calloc(1, sizeof(Renderer));
     if (r == NULL) {
         fprintf(stderr, "out of memory\n");
+        IMG_Quit();
+        TTF_Quit();
         SDL_Quit();
         return NULL;
     }
 
     r->window = SDL_CreateWindow(
-        "PyVaders",
+        "cvanders",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_W, SCREEN_H, 0);
     if (r->window == NULL) {
@@ -230,15 +242,15 @@ Renderer *renderer_create(void)
     /*
      * Window icon. SDL_SetWindowIcon takes an SDL_Surface*, not a texture.
      * We load it, hand it to SDL (which copies what it needs), then free
-     * the surface ourselves.
+     * the surface ourselves. The icon is a PNG, so we use IMG_Load.
      */
-    SDL_Surface *icon = SDL_LoadBMP("assests/alien.png");
+    SDL_Surface *icon = IMG_Load("assets/alien.png");
     if (icon != NULL) {
         SDL_SetWindowIcon(r->window, icon);
         SDL_FreeSurface(icon);
     } else {
         fprintf(stderr, "icon: %s (continuing without icon)\n",
-                SDL_GetError());
+                IMG_GetError());
     }
 
     /* Audio. A failure here is non-fatal: we play silently. */
@@ -250,10 +262,10 @@ Renderer *renderer_create(void)
     }
 
     /* Font. Non-fatal: the game still runs without the on-screen score. */
-    r->font = TTF_OpenFont("assests/Monoton-Regular.ttf", 32);
+    r->font = TTF_OpenFont("assets/Monoton-Regular.ttf", 32);
     if (r->font == NULL) {
         fprintf(stderr, "font: %s (continuing without score text)\n",
-                SDL_GetError());
+                TTF_GetError());
     }
 
     /*
@@ -267,7 +279,7 @@ Renderer *renderer_create(void)
     r->have_state = 1;
     r->last_score = 0;
 
-    SDL_SetWindowTitle(r->window, "PyVaders");
+    SDL_SetWindowTitle(r->window, "cvanders");
     return r;
 
 /* Cleanup labels -- each frees what the stage above it allocated. */
