@@ -70,9 +70,8 @@ struct Renderer {
     TTF_Font    *font;
 
     /* The game world: one heap allocation, released on exit. */
-    GameState state;
-    int       have_state;
-    int       last_score;
+    GameState *state;
+    int        last_score;
 };
 
 /* ---------------------------------------------------------------------- */
@@ -195,7 +194,7 @@ Renderer *renderer_create(void)
     TTF_Init();
 
     /* SDL2_image is needed to load the PNG/JPG assets. */
-    if (IMG_Init(IMG_PNG | IMG_JPG) == 0) {
+    if (IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG) == 0) {
         fprintf(stderr, "IMG_Init: %s\n", IMG_GetError());
         TTF_Quit();
         SDL_Quit();
@@ -276,7 +275,6 @@ Renderer *renderer_create(void)
         fprintf(stderr, "game_init failed\n");
         goto fail_game;
     }
-    r->have_state = 1;
     r->last_score = 0;
 
     SDL_SetWindowTitle(r->window, "cvanders");
@@ -313,10 +311,8 @@ void renderer_destroy(Renderer *r)
 {
     if (r == NULL) return;
 
-    if (r->have_state) {
-        game_free(&r->state);
-        r->have_state = 0;
-    }
+    game_free(r->state);
+    r->state = NULL;
 
     if (r->music)           Mix_FreeMusic(r->music);
     if (r->laser_sound)     Mix_FreeChunk(r->laser_sound);
@@ -357,11 +353,11 @@ static void handle_events(Renderer *r, int *running)
 
         case SDL_KEYDOWN:
             if (event.key.keysym.sym == SDLK_LEFT) {
-                set_player_direction(&r->state, -0.5);
+                set_player_direction(r->state, -0.5);
             } else if (event.key.keysym.sym == SDLK_RIGHT) {
-                set_player_direction(&r->state, 0.5);
+                set_player_direction(r->state, 0.5);
             } else if (event.key.keysym.sym == SDLK_SPACE) {
-                fire_laser(&r->state);
+                fire_laser(r->state);
                 /*
                  * The Mix_Chunk was loaded ONCE at startup, so playing it
                  * here is not an allocation -- this is the fix for the
@@ -376,7 +372,7 @@ static void handle_events(Renderer *r, int *running)
         case SDL_KEYUP:
             if (event.key.keysym.sym == SDLK_LEFT ||
                 event.key.keysym.sym == SDLK_RIGHT) {
-                set_player_direction(&r->state, 0.0);
+                set_player_direction(r->state, 0.0);
             }
             break;
 
@@ -429,7 +425,7 @@ void renderer_present(Renderer *r)
     /* Player. */
     if (r->player_image != NULL) {
         SDL_Rect dest = {
-            (int)r->state.player_x, (int)r->state.player_y, 64, 64};
+            (int)r->state->player_x, (int)r->state->player_y, 64, 64};
         SDL_RenderCopy(r->renderer, r->player_image, NULL, &dest);
     }
 
@@ -437,7 +433,7 @@ void renderer_present(Renderer *r)
      * out-of-bounds access. */
     if (r->alien_image != NULL) {
         for (int i = 0; i < NUM_ENEMIES; i++) {
-            const Alien *a = &r->state.aliens[i];
+            const Alien *a = &r->state->aliens[i];
             SDL_Rect dest = {(int)a->x, (int)a->y, 64, 64};
             SDL_RenderCopy(r->renderer, r->alien_image, NULL, &dest);
         }
@@ -446,20 +442,20 @@ void renderer_present(Renderer *r)
     /* Laser. The original added an offset of (+9, +6). */
     if (r->laser_image != NULL) {
         SDL_Rect dest = {
-            (int)r->state.laser.x + 9, (int)r->state.laser.y + 6, 48, 48};
+            (int)r->state->laser.x + 9, (int)r->state->laser.y + 6, 48, 48};
         SDL_RenderCopy(r->renderer, r->laser_image, NULL, &dest);
     }
 
     /* Score text. */
     char score_buf[32];
     int n = snprintf(score_buf, sizeof(score_buf), "Score : %d",
-                    r->state.score);
+                    r->state->score);
     if (n > 0) {
         draw_text(r, score_buf, 6, 6);
     }
 
     /* Game over banner -- only when the match is over. */
-    if (r->state.game_over) {
+    if (r->state->game_over) {
         draw_text(r, "GAME OVER", 250, 250);
     }
 
@@ -479,22 +475,22 @@ int renderer_step(Renderer *r)
     handle_events(r, &running);
     if (!running) return 0;
 
-    update_player(&r->state);
-    update_aliens(&r->state);
-    update_laser(&r->state);
+    update_player(r->state);
+    update_aliens(r->state);
+    update_laser(r->state);
 
     /*
      * A score increase means a hit happened this frame -- play the
      * explosion. The Mix_Chunk was loaded ONCE at startup, so this is not
      * a per-frame allocation.
      */
-    if (r->state.score != r->last_score && r->explosion_sound != NULL) {
+    if (r->state->score != r->last_score && r->explosion_sound != NULL) {
         Mix_PlayChannel(-1, r->explosion_sound, 1);
-        r->last_score = r->state.score;
+        r->last_score = r->state->score;
     }
 
     renderer_present(r);
 
-    if (r->state.game_over) return 0;   /* stop the loop on game over */
+    if (r->state->game_over) return 0;   /* stop the loop on game over */
     return 1;
 }

@@ -8,12 +8,21 @@
 #   make clean      - remove build artifacts
 #
 # The C *core* (src/game.c) is SDL-free, so `make test` needs only a C
-# compiler + libm. The `game` target additionally requires SDL2, SDL_ttf
-# and SDL_mixer.
+# compiler + libm. The `game` target additionally requires SDL2, SDL2_image,
+# SDL_ttf and SDL_mixer.
+#
+# SDL flags come from pkg-config when available. This is required on macOS
+# with Homebrew, where the headers live under /opt/homebrew/include and are
+# not on the compiler's default search path.
 
-CC      ?= cc
-CFLAGS  ?= -std=c11 -Wall -Wextra -Werror -pedantic
-LDFLAGS ?= -lm
+CC         ?= cc
+PKG_CONFIG ?= pkg-config
+CFLAGS     ?= -std=c11 -Wall -Wextra -Werror -pedantic
+LDFLAGS    ?= -lm
+
+SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2 SDL2_image SDL2_ttf SDL2_mixer 2>/dev/null)
+SDL_LIBS   := $(shell $(PKG_CONFIG) --libs sdl2 SDL2_image SDL2_ttf SDL2_mixer 2>/dev/null || \
+                  echo "-lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer")
 
 CORE_SRC   := src/game.c
 TEST_SRC   := test/test_game.c third_party/unity/unity.c
@@ -31,10 +40,10 @@ UNITY_INC := -Ithird_party/unity
 
 all: $(GAME_BIN)
 
-## Build the SDL frontend (requires SDL2 / SDL_ttf / SDL_mixer)
+## Build the SDL frontend (requires SDL2 / SDL2_image / SDL_ttf / SDL_mixer)
 $(GAME_BIN): $(FRONT_SRC) $(CORE_SRC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -Iinclude -Isrc $(FRONT_SRC) $(CORE_SRC) -o $@ \
-		-pthread $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_mixer 2>/dev/null || echo "-lSDL2 -lSDL2_ttf -lSDL2_mixer") $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Iinclude -Isrc $(FRONT_SRC) $(CORE_SRC) -o $@ \
+		-pthread $(SDL_LIBS) $(LDFLAGS)
 
 ## Core object (SDL-free, leak-free by construction)
 $(CORE_OBJECTS): $(CORE_SRC) | $(BUILD_DIR)
