@@ -15,9 +15,9 @@
  * program, and no per-frame allocation is forgotten.
  *
  * To run:
- *     make all        # builds c/build/pyvaders (needs SDL2, SDL_ttf,
+ *     make all        # builds c/build/cvander (needs SDL2, SDL_ttf,
  *                     # SDL_mixer installed on the system)
- *     ./c/build/pyvaders
+ *     ./c/build/cvander
  */
 
 #include <stdio.h>

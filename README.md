@@ -45,7 +45,7 @@ Build the game with the Makefile in `c/`:
 
 ```sh
 make -C c all
-./c/build/pyvaders
+./c/build/cvander
 ```
 
 The game loads its assets from `assets/` using paths relative to the current

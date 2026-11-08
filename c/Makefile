@@ -31,7 +31,7 @@ FRONT_SRC  := src/render.c src/main.c
 CORE_OBJECTS := $(CORE_SRC:.c=.o)
 BUILD_DIR    := build
 TEST_BIN     := $(BUILD_DIR)/test_game
-GAME_BIN     := $(BUILD_DIR)/pyvaders
+GAME_BIN     := $(BUILD_DIR)/cvander
 
 HEADERS := include/pyvaders.h
 UNITY_INC := -Ithird_party/unity

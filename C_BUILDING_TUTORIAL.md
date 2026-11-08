@@ -350,7 +350,7 @@ make test       # build + run the logic tests (no SDL needed)
 make test-asan  # same, under AddressSanitizer + UndefinedBehaviourSanitizer
 make valgrind   # same, under valgrind (reports leaks)
 make all        # build the actual game (needs SDL2, SDL_ttf, SDL_mixer)
-./build/pyvaders
+./build/cvander
 ```
 
 ### 8.1 What the sanitizer flags do
