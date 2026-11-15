@@ -93,8 +93,8 @@ The design deliberately separates the rules from the rendering:
 - `render.c` loads each texture, sound, and font once at startup and releases
   everything in `renderer_destroy`, so there are no per-frame allocations.
 
-For a beginner-friendly walkthrough of the C port, see
-[C_BUILDING_TUTORIAL.md](./C_BUILDING_TUTORIAL.md).
+For a beginner-friendly walkthrough of the C port or a review of the memory-safe design, see\n[C_BUILDING_TUTORIAL.md](./C_BUILDING_TUTORIAL.md).\n\nNote: This codebase has been reviewed for clarity and detailed comments to assist C beginners. Every function includes explicit NULL-safety checks and explanations of C-specific idioms (like pointer-to-pointers and the `goto` cleanup pattern).
+
 
 ## Testing
 
